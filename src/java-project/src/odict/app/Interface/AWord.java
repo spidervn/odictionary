@@ -7,5 +7,6 @@ public class AWord {
 	String type_Name;
 	
 	ArrayList<String> listMeaning;	
-	ArrayList<String> listExample;	
+	ArrayList<String> listExample;	// Example of a meaning
+	
 }
