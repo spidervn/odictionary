@@ -10,3 +10,9 @@ soup = BeautifulSoup(html) # page.content, "html.parser")
 
 print soup.title
 print soup.p
+
+
+a = soup.find(class="hwg")
+for link in a:
+    print "One: "
+    print a
