@@ -87,6 +87,7 @@ def grab_peg(url, outfile):
 	html += "<title>" + soup.title.string + "</title>"
 	html += "</head>"
 	html += "<body>"
+	html += "<h1>" + soup.title.string + "</h1>"
 	page_count = 1
 	fpaginate = soup.find_all(id="pagination_top")
 	page_link = url
