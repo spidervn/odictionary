@@ -66,12 +66,12 @@ def grab_a_page(page_url):
 		# print(content)
 		# print("")
 
-		myhtml += "<h3>Post: " + posthead + "</h3>"
-		myhtml += "<p><strong>user: " + username + "</strong></p>"
+		myhtml += "<h4>user: " + username + "</h4>"
+		myhtml += "<p><strong>Post: " + posthead + "</strong></p>"
 		myhtml += "<p><strong>member_type: " + member_type + "</strong></p>"
 		myhtml += "<p><strong>user-info: " + userinfo_extra + "</strong></p>"
 		myhtml + "<p>------------------------------------</p>"
-		myhtml += "<div>" + content + "</div>"
+		myhtml += "<div>" + f_content.prettify() + "</div>"
 		myhtml += "<br/>"	
 
 	return myhtml	
