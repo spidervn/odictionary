@@ -1,0 +1,3 @@
+import system
+
+def main:
