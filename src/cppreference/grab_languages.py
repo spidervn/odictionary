@@ -77,60 +77,136 @@ def grab_a_page(page_url):
 	return myhtml	
 
 
-def grab_sub_page(page_url, deep_level):
-	print (page_url)
 
+def grab_sub_page(page_url, deep_level, toc_id_now):
 	PAGE_MAINURL="https://en.cppreference.com"
+	url_full = PAGE_MAINURL + page_url
+	print ("FULL URL ", url_full)
 
-	rq = requests.get(PAGE_MAINURL + page_url)
+	rq = requests.get(url_full)
 	data = rq.text
 	soup = BeautifulSoup(data)
 
 	myhtml = ""
 	hd = soup.find(id="firstHeading")
-	bc = soup.find(id="bodyContent")
+	bc = soup.find(id="mw-content-text") # soup.find(id="bodyContent")
+	div_navbar = bc.find("div", class_="t-navbar")
+	table_toc = bc.find(id="toc")
+	str_toc = "toc_" + str(toc_id_now+1)
+	if div_navbar != None:
+		div_navbar.clear()
+	if table_toc != None:
+		table_toc.clear()
 
-	if deep_level == 2:
-		myhtml += "<h2>" + hd.text + "<h2>"
+	if deep_level == 1:
+		myhtml += "<h1 id='" + str_toc  +"' class='color_blue'>" + hd.text + "</h1>"
+	elif deep_level == 2:
+		myhtml += "<h2 id='" + str_toc + "' class='color_l1blue'>" + hd.text + "</h2>"
 	elif deep_level == 3:
-		myhtml += "<h3>" + hd.text + "<h3>"
+		myhtml += "<h3 id='" + str_toc + "' class='color_l2blue'>" + hd.text + "</h3>"
 	else:
-		myhtml += "<h4>" + hd.text + "<h4>"
+		myhtml += "<h4 id='" + str_toc + "' class='color_l2blue'>" + hd.text + "</h4>"
 	myhtml += "<div>"
 	myhtml += str(bc)
 	myhtml += "</div>"
 
-	return myhtml
+	f = open("sub.html", "w+", encoding="utf-8")
+	f.write(myhtml)
+	f.close()
+
+	return [ myhtml, hd.text, toc_id_now + 1]
+
+
 
 def grab_cppreference_language(url, outfile):
 	# url =https://en.cppreference.com/w/cpp/language
 	r  = requests.get(url)
 	data = r.text
 	soup = BeautifulSoup(data)
+	toc_id_now = 1
+	tocdict = {}
+	tocdict[toc_id_now] = [ soup.title.string, 1]
 
-	html = "<html>"
-	html += "<head>"	
-	html += "<title>" + soup.title.string + "</title>"
-	html += "</head>"
-	html += "<body>"
-	html += "<h1>" + soup.title.string + "</h1>"
 	page_count = 1
-	fcontent = soup.find_all(id="mw-content-text")
-	ftable = soup.find("table")
+	fcontent = soup.find(id="mw-content-text")
+	ftables = fcontent.find_all("table")
+	ftable = None
 
-	html += "<div>"
-	html += str(fcontent[0])
-	html += "</div>"
-	html += "</body>"
+	for table1 in ftables:
+		if 'class' in table1.attrs:
+			print(type(table1))
+			print("Classs=", type(table1.attrs))
+		else:
+			ftable = table1
+			break
+		# if table1['class'][0] != 't-nv-begin':
+		# 	print("Found Table=", table1)
+		# 	ftable = table1
+		# 	break
+
+	htmlbody = ""
+	htmlbody += "<h1 id='toc_1' class='color_blue'>" + soup.title.string + "</h1>"
+	htmlbody += "<div>"
+	htmlbody += str(str(fcontent))
+	htmlbody += "</div>"
 
 	list_title = ftable.find_all("a")
+	count = 0
 
 	for one_title in list_title:
 		print(one_title)
 		if one_title.parent.name == "b":
-			html += grab_sub_page(one_title["href"], 2)
+			deep_level = 1
+
+			grab_r = grab_sub_page(one_title["href"], deep_level, toc_id_now) 
+			htmlbody += grab_r[0]
+			toc_id_now = grab_r[2]
+			tocdict[grab_r[2]] = [ grab_r[1], deep_level]
 		else:
-			html += grab_sub_page(one_title["href"], 3)
+
+			deep_level = 2
+			grab_r = grab_sub_page(one_title["href"], deep_level, toc_id_now)
+			htmlbody += grab_r[0]
+			toc_id_now = grab_r[2]
+			tocdict[grab_r[2]] = [ grab_r[1], deep_level]
+
+		count += 1
+		if count > 4:
+			# break
+			pass
+	tochtml = "<div>"
+	for i in range(1,toc_id_now+1):
+		if tocdict[i][1] == 1:
+			tochtml += "<p><a href='#toc_" + str(i) + "'>" + tocdict[i][0] + "</a></p>"
+		elif tocdict[i][1] == 2:
+			tochtml += "<p><a href='#toc_" + str(i) + "'>&nbsp;&nbsp;&nbsp;&nbsp;" + tocdict[i][0] + "</a></p>"
+		else:
+			tochtml += "<p><a href='#toc_" + str(i) + "'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" + tocdict[i][0] + "</a></p>"
+	tochtml += "</div>"
+
+	html = "<html>"
+	html += "<head>"
+	html += str(soup.head)
+	# html +=  "<title>" + soup.title.string + "</title>"
+
+	html += "<body>"
+	html += """<style type="text/css">
+		.color_blue {
+			color: #0000FF;
+		}
+
+		.color_l1blue {
+			color #0707FF;
+		};
+
+		.color_l2blue {
+			color #AAAAFF;
+		};
+	</style>
+	"""	
+	html += tochtml
+	html += htmlbody
+	html += "</body>"
 
 	f = open(outfile, "w+", encoding="utf-8")
 	f.write(html)
@@ -139,3 +215,17 @@ def grab_cppreference_language(url, outfile):
 	return html
 
 grab_cppreference_language("https://en.cppreference.com/w/cpp/language", "a.html")	
+# grab_sub_page()
+# grab_sub_page("/w/cpp/header", 2);
+
+# r  = requests.get("https://en.cppreference.com/w/cpp/header")
+# data = r.text
+# soup = BeautifulSoup(data)
+
+# print(str(soup.head))
+
+# bc = soup.find(id="bodyContent")
+# print(bc)
+# f = open("cc.html", "w+", encoding="utf-8")
+# f.write(str(bc))
+# f.close()
