@@ -21,17 +21,23 @@ class MeaningItem:
     def MeaningItem(self):
         return
 
-class MeaningTree:
-    def MeaningTree(self):
-        return    
+class MeaningNote:
+    def MeaningNote(self):
+        self.meaning = MeaningItem()
+        self.child_meanings = []    # Array of meaning items
+        return
 
 class OneWord:
     self.name = ""              # 
     self.wordType = "Unknown"   # 
-    self.pronunciations=[]      # 
-    self.alternatives=[]        # Array of OneWord (Alternative meanings)
-    
+    self.pronunciations=[]      # Array of pronunciations
 
+    self.meaning_by_wordtype = []   # Array of (Array of Meaning notes)
+    self.origin = ""                # History
+    self.alternatives = []          # Array of OneWord (Alternative meanings/or wordtype)
+    
+    def OneWord(self):
+        return
 
     def OneWord(self):
         return
@@ -44,6 +50,7 @@ class ScrapOneWord:
 fr = urllib2.urlopen("https://en.oxforddictionaries.com/definition/odometry")
 html = fr.read()
 fr.close()
+
 # page = requests.get("https://en.oxforddictionaries.com/definition/odometry")
 soup = BeautifulSoup(html) # page.content, "html.parser")
 
@@ -54,5 +61,4 @@ a = soup.find(class="hwg")
 for link in a:
     print "One: "
     print a
-
 
