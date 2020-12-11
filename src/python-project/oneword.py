@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
-import urllib2
+import urllib.request
+
 from json import JSONEncoder
 import json
 
@@ -31,21 +32,28 @@ class MeaningNote(JSONEncoder):
 class OneWord(JSONEncoder):
     def __init__(self):
         self.name = ""              # 
+        self.names = []
         self.wordType = "Unknown"   # 
-        self.pronunciations=[]      # Array of pronunciations
-        self.meaning_by_wordtype = []   # Array of (Array of Meaning notes)
+        self.pronunciations=[]      # Array of pronunciations; (One-element contains Pronounce and Link)
+        self.meaning_by_wordtype = []   # Array of (Array of Meaning notes) = MeaningLine
         self.origin = ""                # History
         self.alternatives = []          # Array of OneWord (Alternative meanings/or wordtype)
 
         self.encoding = "UTF-8"
+
+        
+
         return
+
+
+
 
 class ScrapOneWord:
     def ScrapOneWord(self):
         return
 
 def scrape_oneword(wordurl):
-    fr = urllib2.urlopen(wordurl)
+    fr = urllib.request.urlopen(wordurl)
     html = fr.read()
     fr.close()
 
@@ -56,12 +64,18 @@ def scrape_oneword(wordurl):
     wns = divMain.find_all("span", "hw")   # Word names
     aus = divMain.find_all("audio")        # Audio
 
+    divMain.find_all("div", "primary_homograph")    # Alternative words
+
+
     wordtypes = divMain.find_all("span", "pos")
     gramms = divMain.find_all("section", "gramb")
     sembs = divMain.find_all("ul", "semb")
 
+    myWord = OneWord()
+
     for wn in wns:
-        print(wn)
+        # print(wn.text)
+        myWord.names.append(wn.text)
     
     for au in aus:
         print(au)
@@ -74,6 +88,8 @@ def scrape_oneword(wordurl):
 
     for semb in sembs:
         print(semb.text)
+
+    # Tổ chức 
 
     return
 
@@ -100,4 +116,55 @@ s = json.dumps(w.__dict__)
 print(s)
 
 scrape_oneword("https://www.lexico.com/definition/he")
+
+
+
+"""
+Cấu trúc từ:
+    div(class=entryWrapper): chứa tất cả nội dung; bao gồm:
+        (i) Tên (name)
+        (ii) Tất cả pronounciations:
+                Mỗi pronounce gồm:
+                    Cách viết (phiên âm quốc tế)
+                    URL tới MP3
+        (iii) 
+
+
+    HTML ở phía dưới bao gồm:
+        tag header: chứa nội dung cơ sở, bao gồm: tên; pronounciation; 
+
+
+    HTMLView:
+        div<class=entryWrapper>
+            Nhiều <div class="entryHead primary_homograph">
+                Một <header>: chứa thông tin cơ sở về một alternative của từ () 
+                    Có <h2 class="hwg"/>: có thông tin về từ.
+                        <h3 class="pronounciations">
+                            <span class="phoneticspelling">: Nội dung phát âm - pronounciation
+                            <audio src="">: chứa link mp3 của phát âm.
+        
+            Nhiều <section class="gramb">:
+                Có một <h3 class=ps pos>
+                            <span class="pos">{loại_từ}</span>
+                            <span class="pos-inflections">{dạng_của_loại_từ}</span>
+                        </h3>
+            
+                có một <ul class="semb">
+                    Có nhiều <li> - mỗi li này có 1 nghĩa lớn. Trong li thì:
+                        <div class=trg>:
+                            <p> đầu tiên có: 
+                                Có <span class=iteration>: trong nội dung có chỉ mục (index) của nghĩa lớn.
+                                Có <span class="grammatical_note">: chứa nội dung ghi chú ngữ pháp 
+                                Có <span class="ind">: Chứa nội dung nghĩa lớn.
+
+                                Có <div class="examples"/>: chứa các ví dụ
+                                Có <ol class="subSenses"/>: chứa các dòng-nghĩa-chi tiết:
+                                    Có nhiều <li class="subSense"/>: mỗi li này có đủ thông tin về dòng-nghĩa chi tiết.
+                                        <span class="subsenseIteration">: chứa chỉ mục dòng-nghĩa-chi-tiết.
+                                        <span class="ind">: nghĩa.
+                                        <div class="exg">: Một ví dụ 
+                                        <div class="examples">: các ví dụ 
+                                        <div class="synonyms">: các thứ đồng nghĩa.
+"""
+
 
