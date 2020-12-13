@@ -1,5 +1,7 @@
 from bs4 import BeautifulSoup
+from pathlib import Path
 import urllib.request
+
 
 from json import JSONEncoder
 import json
@@ -523,22 +525,15 @@ class RunConfiguration:
         self.EachWordAudioFolder = ""
         return
 
-class VocabularySelector:
-    def __init__(self)
-        return 
-
-    def next_word(self):
-        return
-    
-    def next_batch_word(self):
-        return
-
 class LexicoGrabber:
     def __init__(self, config):
         self.config = config
         return
 
     def is_in_local_db(self, word):
+        filecheck_01 = Path(config.BaseOutputFolder + "/" + word + "/" + word + ".json")
+        filecheck_02 = Path(config.BaseOutputFolder + "/" + word + "/" + word + ".html")
+        filecheck_02 = Path(config.BaseOutputFolder + "/" + word + "/" + config.EachWordAudioFolder + "/")
 
         return
 
