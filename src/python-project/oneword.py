@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 from pathlib import Path
 import urllib.request
-
+import glob, os
 
 from json import JSONEncoder
 import json
@@ -51,13 +51,7 @@ class OneWord(JSONEncoder):
         self.alternatives = []          # Array of OneWord (Alternative meanings/or wordtype)
 
         self.encoding = "UTF-8"
-
-        
-
         return
-
-
-
 
 class ScrapOneWord:
     def ScrapOneWord(self):
@@ -525,49 +519,182 @@ class RunConfiguration:
         self.EachWordAudioFolder = ""
         return
 
+    def StorePathOfAWord(self, word):
+        return self.BaseOutputFolder + "/" + word + "/"
+
+    def JSONFile(self,word):
+        return self.BaseOutputFolder + "/" + word + "/" + word + ".json"
+        
+    def HTMLFile(self,word):
+        return self.BaseOutputFolder + "/" + word + "/" + word + ".html"   
+
+    def AudioFolder(self,word):
+        return self.BaseOutputFolder + "/" + word + "/" + self.EachWordAudioFolder + "/"      
+
 class LexicoGrabber:
     def __init__(self, config):
         self.config = config
         return
 
     def is_in_local_db(self, word):
-        filecheck_01 = Path(config.BaseOutputFolder + "/" + word + "/" + word + ".json")
-        filecheck_02 = Path(config.BaseOutputFolder + "/" + word + "/" + word + ".html")
-        filecheck_02 = Path(config.BaseOutputFolder + "/" + word + "/" + config.EachWordAudioFolder + "/")
+        filecheck_01 = Path(config.JSONFile(word))
+        filecheck_02 = Path(config.HTMLFile(word))
 
-        return
+        os.chdir(config.AudioFolder(word))
+
+        countFile = 0
+        audioExt = ['*.mp3', '*.wav', '*.wma']
+
+        for oneExt in audioExt:
+            for file in glob.glob(oneExt):
+                countFile += 1
+        return (countFile > 0) and (filecheck_01.is_file()) and (filecheck_02.is_file())
 
     def run_sync_one_word(self, word):
-        return    
+
+        # Parse world here 
+        error_list = []
+        lexico_url = "https://www.lexico.com/definition/" + word
+
+        fr = urllib.request.urlopen(lexico_url)
+        html = fr.read()
+        fr.close()
+
+        if fr is None:
+            error_list.append({
+                'code': ERR_CODE_GENERAL,
+                'source': "",
+                'description': "Could not read URL " + lexico_url
+            })
+
+            return
+
+        soup = BeautifulSoup(html)
+        divMain = soup.find("div", "entryWrapper")
+
+        wordAlters = divMain.find_all("div", {'class': [ 'entryHead', 'primary_homograph']})
+        sections = divMain.find("section")
+
+        wordds = {} # Data structure of this word
+        wordds["alternatives"] = []
+        audioURLs = []
+
+        for i in range(len(wordAlters)):
+            aHeader = wordAlters[i].find("header")
+            alterName = aHeader.find("h2", "hwg") # Name of Alternatives 
+            alterSpelling = aHeader.find("span", "phoneticspelling") # Spelling
+            alterMp3 = aHeader.find("audio")
+
+            # 
+            # alterName.text
+            # alterSpelling.text
+            # alterMp3["src"]
+            # 
+            wordds["alternatives"].append({
+                'name': alterName.text,
+                'spelling': alterSpelling.text,
+                'mp3': alterMp3["src"]
+            })
+            audioURLs.append(alterMp3["src"])
+
+        # Every grammar
+        for i in range(len(sections)):
+            pass
+        return
 
 
+class BS4Util:
+    def __init__(self):
+        return
 
+    def find_by_class(self, tagParent, tagName, listClass, isRecursive):
+
+        if listClass is None or len(listClass) == 0:
+            tags = tagParent.find_all(tagName, recursive=isRecursive)
+        else:
+            tags = tagParent.find_all(tagName, {'class': listClass }, recursive=isRecursive)
+
+        if not tags or len(tags) ==0:
+            return []
+            
+        html_parent = tagParent.prettify()
+        html_tag = tags[0].prettify()
+
+        # Prefix of tag 
+        pos1 = html_tag.find("<")
+        pos2 = html_tag.find(">")
+        res = []
+
+        if (pos1 >= 0 and pos2 >=0):
+            prefix_tag = html_tag[pos1:pos2]
+
+            list_pos = []
+            i = 0
+            findId = 0
+            bFoundNew = True
+            while bFoundNew:
+                foundpos = html_parent.find(prefix_tag, i)
+                if foundpos >= 0:
+                    list_pos.append(foundpos)
+                    i = foundpos+1
+                else:
+                    bFoundNew = False
+
+            if len(list_pos) == len(tags):
+                for i in range(len(list_pos)):
+                    res.append([ list_pos[i], tags[i]])
+            else:
+                for i in range(len(tags)):
+                    res.append([ -1, tags[i]])
+        return res
+    
+# ==================================
+ffhtml = open("do.html", "r", encoding="UTF-8")
+html = ffhtml.read()
 soup = BeautifulSoup(html)
 divMain = soup.find("div", "entryWrapper")
-sections = divMain.find_all("section")
+span = divMain.find("span")
 
-print(len(sections))
-for i in range(len(sections)):
-    if arr_contains(sections[i]["class"], "gramb"):
-        pass
-    else:
-        # General text
-        print("----------------------")
-        print("")
-        print("----------------------")
+# print(divMain.prettify())
+divHtml = divMain.prettify()
+divHtml = divHtml.replace("\r", "")
+divHtml = divHtml.replace("\n", "")
+spanhtml = span.prettify()
+spanhtml = spanhtml.replace("\r", "")
+spanhtml = spanhtml.replace("\n", "")
+pos = divHtml.find(spanhtml)
 
-# An example of a section 
-section01 = {}
-section01["titile"] = "Phrases"
-section01["info"] = [ "Noun", "(Etyologies)", "[mass noun]" ]
+print("BS4Util")
+bsu = BS4Util()
+res = bsu.find_by_class(divMain, "section", ["etymology"], True)
+print(len(res))
 
-tags = divMain.find_all(recursive=False)
-print(len(tags))
-print(tags[0].name)
+for r1 in res:
+    print(r1[0])
 
-divMain.find_all(recursive=False)
+# print(res)
+# sections = divMain.find_all("section")
+# print(len(sections))
 
-lexico_config = RunConfiguration()
-lexico_config.BaseOutputFolder = "./lexico_dict"
-lexico_config.EachWordAudioFolder = "audio"
+# An example of a sction 
+# section01 = {}
+# section01["titile"] = "Phrases"
+# section01["info"] = [ "Noun", "(Etyologies)", "[mass noun]" ]
 
+# tags = divMain.find_all(recursive=False)
+# print(len(tags))
+# print(tags[0].name)
+
+# divMain.find_all(recursive=False)
+
+# lexico_config = RunConfiguration()
+# lexico_config.BaseOutputFolder = "./lexico_dict"
+# lexico_config.EachWordAudioFolder = "audio"
+
+str002="""span
+span
+"""
+
+str003 = str002.replace("span","ok")
+print(str002)
+print(str003)
