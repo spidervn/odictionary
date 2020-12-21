@@ -585,6 +585,8 @@ class LexicoGrabber:
             alterSpelling = aHeader.find("span", "phoneticspelling") # Spelling
             alterMp3 = aHeader.find("audio")
 
+
+
             # 
             # alterName.text
             # alterSpelling.text
@@ -611,8 +613,11 @@ class BS4Util:
 
         if listClass is None or len(listClass) == 0:
             tags = tagParent.find_all(tagName, recursive=isRecursive)
+        elif len(listClass)==1:
+            tags = tagParent.find_all(tagName, str(listClass[0]), recursive=isRecursive)
         else:
-            tags = tagParent.find_all(tagName, {'class': listClass }, recursive=isRecursive)
+            # tags = tagParent.find_all(tagName, {'class': listClass }, recursive=isRecursive)
+            raise Exception('unimplemented', 'unimplemented')
 
         if not tags or len(tags) ==0:
             return []
@@ -627,6 +632,7 @@ class BS4Util:
 
         if (pos1 >= 0 and pos2 >=0):
             prefix_tag = html_tag[pos1:pos2]
+            print("prefix_tag=", prefix_tag)
 
             list_pos = []
             i = 0
@@ -642,7 +648,7 @@ class BS4Util:
 
             if len(list_pos) == len(tags):
                 for i in range(len(list_pos)):
-                    res.append([ list_pos[i], tags[i]])
+                    res.append([list_pos[i], tags[i]])
             else:
                 for i in range(len(tags)):
                     res.append([ -1, tags[i]])
@@ -667,10 +673,52 @@ pos = divHtml.find(spanhtml)
 print("BS4Util")
 bsu = BS4Util()
 res = bsu.find_by_class(divMain, "section", ["etymology"], True)
-print(len(res))
 
-for r1 in res:
-    print(r1[0])
+res_walter = bsu.find_by_class(divMain, "div", ["entryHead"], True)
+res_secs = bsu.find_by_class(divMain, "section", None, False) # Find first class
+print(len(res))
+print(len(res_walter))
+print(len(res_secs))
+
+ttt = divMain.find_all("div", "entryHead", recursive=True)
+print("entryHead=", len(ttt))
+#-------------------------------------------------
+
+bWellOrder = True
+for i in range(len(res_walter)):
+    print(res_walter[i][0])
+    if res_walter[i][0] is None or res_walter[i][0] < 0:
+        bWellOrder = False 
+
+print("---")
+for i in range(len(res_secs)):
+    print(res_secs[i][0])
+    if res_secs[i][0] is None or res_secs[i][0] < 0: 
+        bWellOrder = False
+
+if bWellOrder:
+    for i in range(len(res_walter)):
+        parse_struct.append({
+            'div_alternative': res_walter[i],
+            'sections': []
+        })
+
+    arrError = []
+    for j in range(len(res_secs)):
+        bFound = True
+        for i in range(len(res_walter)):
+            if res_secs[j][0] >= res_walter[i][0]:
+                if i == len(res_walter)-1:
+                    parse_struct[i]['sections'].append(res_secs[j])
+                elif res_secs[j][0] < res_walter[i+1][0]:
+                    parse_struct[i]['sections'].append(res_secs[j])
+                else:
+                    arrError.append("Could not find right slot for section " + str(j) + "; its position is " + str(res_secs[j][0]))
+    print("Final result=", arrError)
+else:
+    # Invalid Here 
+    print("Invalid Order")
+
 
 # print(res)
 # sections = divMain.find_all("section")
@@ -690,11 +738,3 @@ for r1 in res:
 # lexico_config = RunConfiguration()
 # lexico_config.BaseOutputFolder = "./lexico_dict"
 # lexico_config.EachWordAudioFolder = "audio"
-
-str002="""span
-span
-"""
-
-str003 = str002.replace("span","ok")
-print(str002)
-print(str003)
