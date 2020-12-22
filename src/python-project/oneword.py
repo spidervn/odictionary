@@ -609,6 +609,21 @@ class BS4Util:
     def __init__(self):
         return
 
+    def find_all_occurences(self, mainstr, substr):
+        i = 0
+        findId = 0
+        bFoundNew = True
+        arr_find = []
+        while bFoundNew:
+            foundpos = mainstr.find(substr, i)
+            if foundpos >= 0:
+                arr_find.append(foundpos)
+                i = foundpos+1
+            else:
+                bFoundNew = False        
+        
+        return arr_find
+
     def find_by_class(self, tagParent, tagName, listClass, isRecursive):
 
         if listClass is None or len(listClass) == 0:
@@ -616,42 +631,52 @@ class BS4Util:
         elif len(listClass)==1:
             tags = tagParent.find_all(tagName, str(listClass[0]), recursive=isRecursive)
         else:
-            # tags = tagParent.find_all(tagName, {'class': listClass }, recursive=isRecursive)
-            raise Exception('unimplemented', 'unimplemented')
+            tags = tagParent.find_all(tagName, {'class': listClass }, recursive=isRecursive)
+            # raise Exception('unimplemented', 'unimplemented')
 
         if not tags or len(tags) ==0:
             return []
-            
+        
+        print("LEN = ", len(tags))
         html_parent = tagParent.prettify()
         html_tag = tags[0].prettify()
+        arr_prefix = []
 
-        # Prefix of tag 
-        pos1 = html_tag.find("<")
-        pos2 = html_tag.find(">")
-        res = []
+        map_result = []
 
-        if (pos1 >= 0 and pos2 >=0):
-            prefix_tag = html_tag[pos1:pos2]
-            print("prefix_tag=", prefix_tag)
+        # Tag 
+        for tag01 in tags:
+            html_tag01 = tag01.prettify()
+            
+            pos1 = html_tag01.find("<")
+            pos2 = html_tag01.find(">")
 
-            list_pos = []
-            i = 0
-            findId = 0
-            bFoundNew = True
-            while bFoundNew:
-                foundpos = html_parent.find(prefix_tag, i)
-                if foundpos >= 0:
-                    list_pos.append(foundpos)
-                    i = foundpos+1
-                else:
-                    bFoundNew = False
-
-            if len(list_pos) == len(tags):
-                for i in range(len(list_pos)):
-                    res.append([list_pos[i], tags[i]])
+            if pos1 >=0 and pos2 >=0:
+                prefix01 = html_tag01[pos1:pos2]
+                arr_prefix.append(prefix01)
             else:
-                for i in range(len(tags)):
-                    res.append([ -1, tags[i]])
+                prefix01 = None
+                arr_prefix.append(None)
+
+
+            # Find-All.
+            occ01 = self.find_all_occurences(html_parent, prefix01)
+            if occ01 is not None:
+                occ01.sort()
+            
+            for e_occ01 in occ01:
+                if not(e_occ01 in map_result):
+                    map_result.append(e_occ01)
+            map_result.sort()
+
+        res=[]
+        if len(map_result) == len(tags):
+            for i in range(len(map_result)):
+                res.append([map_result[i], tags[i]])
+        else:
+            print("Miss Tag")
+            for i in range(len(tags)):
+                res.append([ -1, tags[i]])
         return res
     
 # ==================================
@@ -683,14 +708,16 @@ print(len(res_secs))
 ttt = divMain.find_all("div", "entryHead", recursive=True)
 print("entryHead=", len(ttt))
 #-------------------------------------------------
-
+#
+# Choose the appropriate parent Alternative for every sections
+# 
+parse_struct = []
 bWellOrder = True
 for i in range(len(res_walter)):
     print(res_walter[i][0])
     if res_walter[i][0] is None or res_walter[i][0] < 0:
-        bWellOrder = False 
+        bWellOrder = False
 
-print("---")
 for i in range(len(res_secs)):
     print(res_secs[i][0])
     if res_secs[i][0] is None or res_secs[i][0] < 0: 
@@ -719,16 +746,16 @@ else:
     # Invalid Here 
     print("Invalid Order")
 
-
+#
 # print(res)
 # sections = divMain.find_all("section")
 # print(len(sections))
-
+#
 # An example of a sction 
 # section01 = {}
 # section01["titile"] = "Phrases"
 # section01["info"] = [ "Noun", "(Etyologies)", "[mass noun]" ]
-
+#
 # tags = divMain.find_all(recursive=False)
 # print(len(tags))
 # print(tags[0].name)
@@ -738,3 +765,35 @@ else:
 # lexico_config = RunConfiguration()
 # lexico_config.BaseOutputFolder = "./lexico_dict"
 # lexico_config.EachWordAudioFolder = "audio"
+"""
+    prefixes 
+    Kiểm tra trùng lặp
+        (i) Trùng lặp 01:
+            Hai nhãn i và j giống hệt nhau 
+        (ii) Hai nhãn i và j có quan hệ contains.
+            Nhãn i chứa nhãn j (j là substring của i)
+
+    Nhận xét:
+        Về mối quan hệ Contains có thể có:
+            Ví dụ: 
+                i contains j 
+                j contains k 
+                => i contains k 
+    Đồ thị G(V,E):
+        E(i,j) = 1 nếu i contains j
+    => 
+
+    Facts:
+        Gọi Actual là ánh xạ đúng của tập hợp cần tìm. (chắc chắn có).
+            Actual[i] nhận giá trị tương ứng của vị trí tìm kiếm.
+        Actual giống như một phép ghép đôi.
+
+        Nếu i contains j thì:
+            Tìm tag[j] trong toàn bộ mainstring sẽ ra kết quả 
+                của tags[i] và [j]
+
+    => Tìm những tags chắc chắn.
+    Những vùng/ thành phần khác nhau;
+    Tag có vùng sâu nhất là những tag không bị trùng lặp. 
+
+"""
