@@ -430,77 +430,6 @@ def parse_DivTrg(tagDiv):
         
     return [{ 'error_list': arr_problems }, ret_data]
 
-def parse_section_meaning(tagSection):
-
-    spans = tagSection.find_all("span", recursive=False)
-
-    info = []
-    primary_idx = 0
-
-    section_data = {
-        'title': [],
-        'notes': [],
-        'content': '', # Main content 
-        # TODO
-        # 'meaning_iter': []
-    }
-
-    for i in range(len(spans)):
-        info.append(spans[i].text)
-        
-        if arr_contains(spans[i]["class"], "pos"):
-            primary_idx = i
-
-
-    uls = tagSection.find_all("ul", "semb")
-    for i in range(len(uls)):
-        lis = uls[i].find_all("li")
-
-        for j in range(len(lis)):
-            divTrg = lis[j].find("div", "trg", recursive=False)
-
-    # return {
-    #     'title': len(info) > 0 ? info[primary_idx] : "",
-    #     'info': info
-    # }
-    return None
-
-def parse_section(tagSection):
-    
-    """
-        Parse Section Type
-    """
-    SECTION_TYPE_UNCOVERED = -1
-    SECTION_TYPE_GRAMMAR_MEANING = 1
-    SECTION_TYPE_ETYMOLOGY = 2
-    sectionType = -1
-
-    error_list = []
-
-    section_data = None
-    ret = {}
-
-    if arr_contains(tagSection["class"], "gramb"):
-        sectionType = SECTION_TYPE_GRAMMAR_MEANING
-    elif arr_contains(tagSection["class"], "etymology"):
-        sectionType = SECTION_TYPE_ETYMOLOGY
-
-    if sectionType == SECTION_TYPE_GRAMMAR_MEANING:
-        ret, section_data =  parse_section_meaning(tagSection)
-    elif sectionType == SECTION_TYPE_ETYMOLOGY:
-        ret, section_data = parse_section_etymology(tagSection)
-    else:
-        # Exception HERE
-        # Store all HTML
-        error_list.append({
-            'code': ERR_CODE_GENERAL,
-            'source': "",
-            'description': "Uncovered sections"
-        })
-
-    concat_2ndarray_to_first(error_list, ret['error_list'])
-    return [ { 'error_list': error_list}, section_data ]
-
 def example_of_datastructure():
     aa = {}
     aa["name"] = "grammar"
@@ -513,6 +442,75 @@ def example_of_datastructure():
     aa['networks'].append(2)
     aa['networks'].appparse_section
 
+
+class BS4Util:
+    def __init__(self):
+        return
+
+    def find_all_occurences(self, mainstr, substr):
+        i = 0
+        findId = 0
+        bFoundNew = True
+        arr_find = []
+        while bFoundNew:
+            foundpos = mainstr.find(substr, i)
+            if foundpos >= 0:
+                arr_find.append(foundpos)
+                i = foundpos+1
+            else:
+                bFoundNew = False        
+        
+        return arr_find
+
+    def find_by_class(self, tagParent, tagName, listClass, isRecursive):
+
+        if listClass is None or len(listClass) == 0:
+            tags = tagParent.find_all(tagName, recursive=isRecursive)
+        elif len(listClass)==1:
+            tags = tagParent.find_all(tagName, str(listClass[0]), recursive=isRecursive)
+        else:
+            tags = tagParent.find_all(tagName, {'class': listClass }, recursive=isRecursive)
+            # raise Exception('unimplemented', 'unimplemented')
+
+        if not tags or len(tags) ==0:
+            return []
+        
+        html_parent = tagParent.prettify()
+        html_tag = tags[0].prettify()
+        arr_prefix = []
+        map_result = []
+
+        # Tag 
+        for tag01 in tags:
+            html_tag01 = tag01.prettify()
+            
+            pos1 = html_tag01.find("<")
+            pos2 = html_tag01.find(">")
+
+            if pos1 >=0 and pos2 >=0:
+                prefix01 = html_tag01[pos1:pos2]
+                arr_prefix.append(prefix01)
+            else:
+                prefix01 = None
+                arr_prefix.append(None)
+
+            # Find-All.
+            occ01 = self.find_all_occurences(html_parent, prefix01) # occ01 is sorted 
+            
+            for e_occ01 in occ01:
+                if not(e_occ01 in map_result):
+                    map_result.append(e_occ01)
+
+        map_result.sort()
+        res=[]
+        if len(map_result) == len(tags):
+            for i in range(len(map_result)):
+                res.append([map_result[i], tags[i]])
+        else:
+            for i in range(len(tags)):
+                res.append([ -1, tags[i]])
+        return res
+ 
 class RunConfiguration:
     def __init__(self):
         self.BaseOutputFolder = ""
@@ -566,119 +564,320 @@ class LexicoGrabber:
                 'source': "",
                 'description': "Could not read URL " + lexico_url
             })
-
             return
 
         soup = BeautifulSoup(html)
-        divMain = soup.find("div", "entryWrapper")
+        bsu = BS4Util()
 
-        wordAlters = divMain.find_all("div", {'class': [ 'entryHead', 'primary_homograph']})
+        divMain = soup.find("div", "entryWrapper")
+        tag_walter = bsu.find_by_class(divMain, "div", ["entryHead"], False)        # Word alternatives     
+        tag_secs = bsu.find_by_class(divMain, "section", None, False)               # Sections
+
+        wordAlters = divMain.find_all("div", { 'class': [ 'entryHead', 'primary_homograph']})
         sections = divMain.find("section")
 
         wordds = {} # Data structure of this word
         wordds["alternatives"] = []
         audioURLs = []
 
-        for i in range(len(wordAlters)):
-            aHeader = wordAlters[i].find("header")
-            alterName = aHeader.find("h2", "hwg") # Name of Alternatives 
-            alterSpelling = aHeader.find("span", "phoneticspelling") # Spelling
-            alterMp3 = aHeader.find("audio")
+        # Audio first
+        tag_Audios = divMain.find_all("audio")
+        for audio01 in tag_Audios:
+            audioURLs.append(audio01['src'])
+        wordds['audio'] = audioURLs
+        wordds['alternatives'] = []
 
+        alternative_struct = []
+        alternative_err = []
+        bWellOrder = True
+        for i in range(len(tag_walter)):
+            if tag_walter[i][0] < 0:
+                bWellOrder = False
 
+        for i in range(len(tag_secs)):
+            if tag_secs[i][0] < 0: 
+                bWellOrder = False
 
-            # 
-            # alterName.text
-            # alterSpelling.text
-            # alterMp3["src"]
-            # 
-            wordds["alternatives"].append({
-                'name': alterName.text,
-                'spelling': alterSpelling.text,
-                'mp3': alterMp3["src"]
-            })
-            audioURLs.append(alterMp3["src"])
+        if bWellOrder:
+            for i in range(len(res_walter)):
+                alternative_struct.append({
+                    'div_alternative': res_walter[i],
+                    'sections': []
+                })
 
-        # Every grammar
-        for i in range(len(sections)):
-            pass
-        return
+            for j in range(len(res_secs)):
+                bFound = True
+                b_BeforeAll = True
+                for i in range(len(res_walter)):
+                    if res_secs[j][0] >= res_walter[i][0]:
+                        b_BeforeAll = False
+                        if i == len(res_walter)-1:
+                            alternative_struct[i]['sections'].append(res_secs[j])
+                        elif res_secs[j][0] < res_walter[i+1][0]:
+                            alternative_struct[i]['sections'].append(res_secs[j])
 
+                if b_BeforeAll:
+                    first_walter = res_walter[0][0] if len(res_walter) > 0 else None
+                    alternative_err.append("The section " + str(j) + "th before all Word alternatives; this is invalid or unexpected; its position is " + str(res_secs[j][0]) + "; The first alternative pos is " + first_walter)
 
-class BS4Util:
-    def __init__(self):
-        return
-
-    def find_all_occurences(self, mainstr, substr):
-        i = 0
-        findId = 0
-        bFoundNew = True
-        arr_find = []
-        while bFoundNew:
-            foundpos = mainstr.find(substr, i)
-            if foundpos >= 0:
-                arr_find.append(foundpos)
-                i = foundpos+1
-            else:
-                bFoundNew = False        
-        
-        return arr_find
-
-    def find_by_class(self, tagParent, tagName, listClass, isRecursive):
-
-        if listClass is None or len(listClass) == 0:
-            tags = tagParent.find_all(tagName, recursive=isRecursive)
-        elif len(listClass)==1:
-            tags = tagParent.find_all(tagName, str(listClass[0]), recursive=isRecursive)
-        else:
-            tags = tagParent.find_all(tagName, {'class': listClass }, recursive=isRecursive)
-            # raise Exception('unimplemented', 'unimplemented')
-
-        if not tags or len(tags) ==0:
-            return []
-        
-        print("LEN = ", len(tags))
-        html_parent = tagParent.prettify()
-        html_tag = tags[0].prettify()
-        arr_prefix = []
-
-        map_result = []
-
-        # Tag 
-        for tag01 in tags:
-            html_tag01 = tag01.prettify()
-            
-            pos1 = html_tag01.find("<")
-            pos2 = html_tag01.find(">")
-
-            if pos1 >=0 and pos2 >=0:
-                prefix01 = html_tag01[pos1:pos2]
-                arr_prefix.append(prefix01)
-            else:
-                prefix01 = None
-                arr_prefix.append(None)
-
-
-            # Find-All.
-            occ01 = self.find_all_occurences(html_parent, prefix01)
-            if occ01 is not None:
-                occ01.sort()
-            
-            for e_occ01 in occ01:
-                if not(e_occ01 in map_result):
-                    map_result.append(e_occ01)
-            map_result.sort()
-
-        res=[]
-        if len(map_result) == len(tags):
-            for i in range(len(map_result)):
-                res.append([map_result[i], tags[i]])
-        else:
-            print("Miss Tag")
-            for i in range(len(tags)):
-                res.append([ -1, tags[i]])
-        return res
+            concat_2ndarray_to_first(error_list, alternative_err)
     
+            if len(alternative_err) > 0:
+                pass
+            else:
+                for i in range(len(alternative_struct)):
+
+                    parse_alter01 = {}
+
+                    tag_alter01 = alternative_struct[i]['div_alternative']
+                    aHeader = tag_alter01.find("header")
+                    alterName = tag_alter01find("h2", "hwg")                       # Name of Alternatives 
+                    alterSpelling = tag_alter01find("span", "phoneticspelling")    # Spelling
+                    alterMp3 = tag_alter01find("audio")
+
+                    parse_alter01['name'] = alterName.text
+                    parse_alter01['spelling'] = alterSpelling.text
+                    parse_alter01['audio_url'] = alterMp3['src']
+                    parse_alter01['header'] = aheader.text
+                    parse_alter01['sections'] = []
+
+                    for j in range(len(alternative_struct[i]['sections'])):
+                        tag_section01 = alternative_struct[i]['sections'][j]
+                        err, section_dat = self.__parse_section(tag_section01)
+                        concat_2ndarray_to_first(list_error, err['error_list'])
+
+                        if (len(err) > 0):
+                            parse_alter01['sections'].append("<<<<<INVALID_PARSE>>>>>")
+                        else:
+                            parse_alter01['sections'].append(section_dat)
+                    
+                    wordds['alternatives'].append(parse_alter01)
+
+        return None
+
+    def __parse_section_meaning(self, tagSection):
+        """
+            (S-Meaning) Với loại section dạng <section class="gramb">; gọi là section-ý nghĩa; cấu trúc như sau
+                        Có một <h3 class=ps pos>
+                                    <span class="pos">{loại_từ}</span>
+                                    <span class="pos-inflections">{dạng_của_loại_từ}</span>
+                                </h3>
+                    
+                        có một <ul class="semb">
+                            Có nhiều <li> - mỗi li này có 1 nghĩa lớn. Trong li thì:
+                                <div class=trg>:
+                                    <p> đầu tiên có: 
+                                        Có <span class=iteration>: trong nội dung có chỉ mục (index) của nghĩa lớn.
+                                        Có <span class="grammatical_note">: chứa nội dung ghi chú ngữ pháp 
+                                        Có <span class="ind">: Chứa nội dung nghĩa lớn.
+
+                                        Có <div class="examples"/>: chứa các ví dụ
+                                        Có <ol class="subSenses"/>: chứa các dòng-nghĩa-chi tiết:
+                                            Có nhiều <li class="subSense"/>: mỗi li này có đủ thông tin về dòng-nghĩa chi tiết.
+                                                <span class="subsenseIteration">: chứa chỉ mục dòng-nghĩa-chi-tiết.
+                                                <span class="ind">: nghĩa.
+                                                <div class="exg">: Một ví dụ 
+                                                <div class="examples">: các ví dụ 
+                                                <div class="synonyms">: các thứ đồng nghĩa.
+        """
+        spans = tagSection.find_all("span", recursive=False)
+        info = []
+        primary_idx = 0
+
+        section_data = {
+            'title': [],
+            'notes': [],
+            'content': '', # Main content 
+            # TODO
+            # 'meaning_iter': []
+        }
+
+        for i in range(len(spans)):
+            info.append(spans[i].text)
+            
+            if arr_contains(spans[i]["class"], "pos"):
+                primary_idx = i
+
+
+        uls = tagSection.find_all("ul", "semb")
+        for i in range(len(uls)):
+            lis = uls[i].find_all("li")
+
+            for j in range(len(lis)):
+                divTrg = lis[j].find("div", "trg", recursive=False)
+
+        # return {
+        #     'title': len(info) > 0 ? info[primary_idx] : "",
+        #     'info': info
+        # }
+        return None
+
+    def __parse_section(self, tagSection):
+        
+        """
+            Parse Section Type
+        """
+        SECTION_TYPE_UNCOVERED = -1
+        SECTION_TYPE_GRAMMAR_MEANING = 1
+        SECTION_TYPE_ETYMOLOGY = 2
+        sectionType = -1
+
+        error_list = []
+
+        section_data = None
+        ret = {}
+
+        if arr_contains(tagSection["class"], "gramb"):
+            sectionType = SECTION_TYPE_GRAMMAR_MEANING
+        elif arr_contains(tagSection["class"], "etymology"):
+            sectionType = SECTION_TYPE_ETYMOLOGY
+
+        if sectionType == SECTION_TYPE_GRAMMAR_MEANING:
+            ret, section_data =  parse_section_meaning(tagSection)
+        elif sectionType == SECTION_TYPE_ETYMOLOGY:
+            ret, section_data = parse_section_etymology(tagSection)
+        else:
+            # Exception HERE
+            # Store all HTML
+            error_list.append({
+                'code': ERR_CODE_GENERAL,
+                'source': "",
+                'description': "Uncovered sections"
+            })
+
+        concat_2ndarray_to_first(error_list, ret['error_list'])
+        return [ { 'error_list': error_list}, section_data ]
+
+    def __parse_DivTrg(self, tagDiv):
+        
+        #
+        # Tìm các tag bậc 1
+        #   (i) Nếu là ol, có class=subSenses thì 
+        #   (ii)
+        #
+        # Đầu ra là:
+        #   Một dictionary 
+        #   Hoặc là một Node mới trên Dictionary sẵn có.
+        # 
+        RET_SUCCESS = 0
+        RET_GENERAL_ERROR = 1
+        RET_TAG_NOTDEFINED = 2
+
+        tags = tagDiv.find_all(recursive=False)
+
+        ret = RET_SUCCESS
+        arr_errors = []
+        arr_problems = []   # Array of { problem_code: ; problem_source }
+
+        ret_data = {}
+        ret_data['notes'] = []              # Every notes: Grammar; History; Usage;
+        ret_data['content'] = ''            # Meaning of Content   
+        ret_data['direct_examples'] = []    # Direct Example Here
+        ret_data['more_examples'] = []      # More Here
+        ret_data['sub_senses'] = []         # List of detail meaning here
+        
+        for i in range(len(tags)):
+            if tags[i].name == "ol":
+                # 
+                # TODO
+                # arr_contains(tags[i]["class"], "subSenses"):
+                # Parse subsense here
+                # 
+                lis = tags[i].find_all("li", "subSense", recursive=False)
+
+                if len(lis) > 0:
+                    for j in range(len(lis)):
+                        oneMeaningCollect = { }
+                        oneMeaningCollect["direct_examples"] = []
+
+                        spanIter = lis[j].find("span", "subsenseIteration")
+                        spanContent = lis[j].find("span", "ind")
+                        divDirectExamples = lis[j].find_all("div", "exg", recursive=False)
+                        divMoreExamples = lis[j].find("div", "examples")
+                                        
+                        if not spanContent:
+                            # Errror 
+                            arr_problems.append({
+                                'code': ERR_CODE_PARSE_TAG_NOTDEFINED,
+                                'source': "",
+                                'description': "Tag ol inside <div class=trg> has no Li?"
+                            })
+                        else:
+                            oneMeaningCollect['content'] = spanContent.text
+
+                        if spanIter:
+                            oneMeaningCollect['iteration'] = spanIter.text
+
+                        if divDirectExamples:
+                            for ddE01 in divDirectExamples:
+                                for ddE01_ConcreteEx in ddE01.find_all("div", "ex"):
+                                    oneMeaningCollect["direct_examples"].append(ddE01_ConcreteEx.text)
+                        
+                        if divMoreExamples:
+                            liExs = divMoreExamples.find_all("li", "ex")
+
+                            if liExs is not None and len(liExs) > 0:
+                                for liEx01 in liExs:
+                                    oneMeaningCollect["more_examples"].append(liEx01.text)
+                            else:
+                                # Errror 
+                                arr_problems.append({
+                                    'code': ERR_CODE_PARSE_TAG_NOTDEFINED,
+                                    'source': "",
+                                    'description': "Tag ol inside <div class=trg> has no Li?"
+                                })
+                else:
+                    arr_problems.append({
+                        'code': ERR_CODE_PARSE_TAG_NOTDEFINED,
+                        'source': "",
+                        'description': "Tag ol inside <div class=trg> has no Li?"
+                    })
+            elif tags[i].name == "div":
+                # Direct Example
+                if arr_contains(tags[i]["class"], "exg"):
+                    for tag_directExample in tags[i].find_all("div", "ex"):
+                        ret_data['direct_examples'].append(tag_directExample.text)
+
+                elif arr_contains(tags[i]["class"], "examples"):
+                    for tag_ex in tags[i].find_all("li", "ex"):
+                        ret_data['more_examples'].append(tag_ex.text)
+                else:
+                    arr_problems.append({
+                        'code': ERR_CODE_PARSE_TAG_NOTDEFINED,
+                        'source': "",
+                        'description': "div Tag inside <div=trg> uncovered"
+                    })
+
+            # Text processing
+            else:
+                # Gather all text here
+                # Find Every tags 
+                # Get All-text here 
+
+                stack = [tags[i]]
+
+                _spans =  tags[i].find_all("span")
+                _strongs =  tags[i].find_all("strong")
+                _h2s =  tags[i].find_all("h2")
+                _h3s =  tags[i].find_all("h3")
+                _h4s =  tags[i].find_all("h4")
+
+                if tags[i].name == 'span' or tags[i].name == 'strong' or tags[i].name == 'h2' or tags[i].name == 'h3' or tags[i].name == 'h4':
+                    ret_data['notes'].append(tags[i].text)
+
+                for span in tags[i].find_all("span"):
+                    ret_data['notes'].append(span.text)
+                for strong in tags[i].find_all("strong"):
+                    ret_data['notes'].append(strong.text)
+                for h2 in tags[i].find_all("h2"):
+                    ret_data['notes'].append(h2.text)
+                for h3 in tags[i].find_all("h3"):
+                    ret_data['notes'].append(h3.text)
+                for h4 in tags[i].find_all("h4"):
+                    ret_data['notes'].append(h4.text)
+            
+        return [{ 'error_list': arr_problems }, ret_data]
+
 # ==================================
 ffhtml = open("do.html", "r", encoding="UTF-8")
 html = ffhtml.read()
@@ -733,15 +932,21 @@ if bWellOrder:
     arrError = []
     for j in range(len(res_secs)):
         bFound = True
+        b_BeforeAll = True
         for i in range(len(res_walter)):
             if res_secs[j][0] >= res_walter[i][0]:
+                b_BeforeAll = False
                 if i == len(res_walter)-1:
                     parse_struct[i]['sections'].append(res_secs[j])
                 elif res_secs[j][0] < res_walter[i+1][0]:
                     parse_struct[i]['sections'].append(res_secs[j])
-                else:
-                    arrError.append("Could not find right slot for section " + str(j) + "; its position is " + str(res_secs[j][0]))
+
+        if b_BeforeAll:
+            first_walter = res_walter[0][0] if len(res_walter) > 0 else None
+            arrError.append("The section " + str(j) + "th before all Word alternatives; this is invalid or unexpected; its position is " + str(res_secs[j][0]) + "; The first alternative pos is " + first_walter)
+
     print("Final result=", arrError)
+    
 else:
     # Invalid Here 
     print("Invalid Order")
