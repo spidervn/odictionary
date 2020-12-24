@@ -825,6 +825,10 @@ class LexicoGrabber:
 
             uniform_list.sort(key=___compare_fnc)
 
+            # Enumerating All
+            current_level = 0
+            for i in range(len(uniform_list)):
+                if uniform_list[i]['level'] == current_level + 1:
             # 
             # BUild A Tree Structure from uniform_list
             # 
