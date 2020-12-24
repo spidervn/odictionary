@@ -680,9 +680,13 @@ class LexicoGrabber:
                                                 <div class="examples">: các ví dụ 
                                                 <div class="synonyms">: các thứ đồng nghĩa.
         """
-        spans = tagSection.find_all("span", recursive=False)
-        info = []
-        primary_idx = 0
+
+        # Variable declaration
+        ret_err = []
+        word_type = None      # Output structure
+        word_form = None
+        word_notes = []
+        meanings = []
 
         section_data = {
             'title': [],
@@ -691,13 +695,24 @@ class LexicoGrabber:
             # TODO
             # 'meaning_iter': []
         }
+        
+        spans = tagSection.find_all("span", recursive=False)
+        tag_h3 = tagSection.find("h3", recursive=False)
+        tag_spans = tag_h3.find_all("span")
 
-        for i in range(len(spans)):
-            info.append(spans[i].text)
-            
-            if arr_contains(spans[i]["class"], "pos"):
-                primary_idx = i
+        for i in range(len(tag_spans)):
+            if arr_contains(tag_spans[i]["class"], "pos"):
+                word_type = tag_spans[i].text
+            elif arr_contains(tag_spans[i]["class"], "pos-inflections"):
+                word_form = tag_spans[i].text
+            else:
+                word_notes.append(tag_spans[i].text)
 
+        if not word_type:
+            ret_err.append("[Section Meaning (section; class=gramb)] could not find word_type.")
+
+        if not word_form:
+            word_form = tag_posinflect.text 
 
         uls = tagSection.find_all("ul", "semb")
         for i in range(len(uls)):
@@ -705,6 +720,15 @@ class LexicoGrabber:
 
             for j in range(len(lis)):
                 divTrg = lis[j].find("div", "trg", recursive=False)
+                errtrg, trg_data = self.__parse_DivTrg(tagTrg)
+
+                if len(errtrg['error_list']) == 0:
+                    meanings.append(trg_data)
+                else:
+                    meanings.append("<<<<<<<<<<<INVALID_PARSE>>>>>>>>>>>>")
+
+                concat_2ndarray_to_first(ret_err, errtrg['error_list'])
+            
 
         # return {
         #     'title': len(info) > 0 ? info[primary_idx] : "",
@@ -712,8 +736,126 @@ class LexicoGrabber:
         # }
         return None
 
-    def __parse_section(self, tagSection):
+    def __parse_section_etymology(self, tagSection):
+        """
+            (S-Etymology) Với loại Section dạng này (Dạng HTML: <section>, class chứa etymology) cấu trúc như sau:
+                        Các Tag H3 là chứa Etymology-Item  (<h3 class="phrase-title">)
+                        div class=senseInnerWrapper; chứa:
+                            <ul class="semb gramb"> chứa các thành phần sau:
+                                (tp01) các <strong class="phrase">: chứa nội dung từ.
+                                (tp02) (tùy chọn - có hoặc không) (số lượng >= 0) <span> ([optional] class=sense-registers): nội dung giải nghĩa 
+                                (tp03) <ul class="semb">: trong này có 
+                                    <li> - trong này có:
+                                        <div class="trg">
+                                            <span class=iteration>
+                                            <span class=grammatical_note>
+                                            <span class=ind>: nội dung nghĩa
+                                            <div class=examples>
+
+                                            (Có thể có) <ol class=subSenses>: trong này có 
+                                                <li class=subSense>
+                                                    <span class="subsenseIteration">
+                                                    <span class="form-groups">
+                                                    <span class=ind>: Nội dung subsense
+                                                    <div class=examples>: nội dung examples 
+        """
         
+        etymology_items = [] # Datastructure result
+
+        tag_h3 = tagSection.find_all("h3", recursive=False)
+        div_wrappers = tagSection.find_all("div", "senseInnerWrapper", recursive=False)
+        
+        for oneh3 in tag_h3:
+            etymology_items.append(oneh3.text)
+
+        for div_wrapper in div_wrappers:
+
+            ety01_struct = []
+
+            bs04 = BS4Util()
+            etyItems = bs04.find_by_class(div_wrapper, "strong", ["phrase"], False)
+            etyNotes = bs04.find_by_class(div_wrapper, "span", None, False)
+            etyMeans = bs04.find_by_class(div_wrapper, "ul", ["semb"], False)
+        
+            # Gán nhãn (đánh dấu) đã xử lý 
+            mark_items = []
+            mark_notes = []
+            mark_means = []
+
+            for i in range(len(etyItems)):
+                mark_items.append(False)
+            for i in range(len(etyNotes)):
+                mark_notes.append(False)
+            for i in range(len(etyMeans)):
+                mark_means.append(False)
+
+            uniform_list = []
+
+            for i in range(etyItems):
+                uniform_list.append({
+                    'type': 'ETYITEMS',
+                    'level': 1,
+                    'real_pos': etyItems[i][0],
+                    'tag': etyItems[i][1]
+                })
+            
+            for i in range(etyNotes):
+                uniform_list.append({
+                    'type': 'ETYNOTES',
+                    'level': 2,
+                    'real_pos': etyNotes[i][0],
+                    'tag': etyNotes[i][1]
+                })
+
+            for i in range(etyMeans):
+                uniform_list.append({
+                    'type': 'ETYMEANS',
+                    'level': 3,
+                    'real_pos': etyMeans[i][0],
+                    'tag': etyMeans[i][1]
+                })
+
+            def ___compare_fnc(item1, item2):
+                if item1['real_pos'] < item2['real_pos']:
+                    return -1
+                elif item1['real_pos'] > item2['real_pos']:
+                    return 1
+                else 
+                    return 0
+
+            uniform_list.sort(key=___compare_fnc)
+
+            # 
+            # BUild A Tree Structure from uniform_list
+            # 
+            # Building Tree By observation: If a note is after Items 
+            # 
+            for i in range(len(etyItems)):
+
+                ety_line_struct = {
+                    'content': "",
+                    'notes': [],
+                    'meaining': {}
+                }
+
+                for j in range(len(etyNotes)):
+                    if etyNotes[j][0] > etyItems[i][0]:
+                        if i == len(etyItems)-1: # Last
+                            
+                        else:
+                    
+
+                    
+
+
+                        for k in range(etyMeans):
+                            if etyMeans[k][0] >= 
+
+
+
+        return
+
+    def __parse_section(self, tagSection):
         """
             Parse Section Type
         """
@@ -723,7 +865,6 @@ class LexicoGrabber:
         sectionType = -1
 
         error_list = []
-
         section_data = None
         ret = {}
 
@@ -733,9 +874,9 @@ class LexicoGrabber:
             sectionType = SECTION_TYPE_ETYMOLOGY
 
         if sectionType == SECTION_TYPE_GRAMMAR_MEANING:
-            ret, section_data =  parse_section_meaning(tagSection)
+            ret, section_data =  self.__parse_section_meaning(tagSection)
         elif sectionType == SECTION_TYPE_ETYMOLOGY:
-            ret, section_data = parse_section_etymology(tagSection)
+            ret, section_data = self.__parse_section_etymology(tagSection)
         else:
             # Exception HERE
             # Store all HTML
