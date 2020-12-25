@@ -655,6 +655,99 @@ class LexicoGrabber:
 
         return None
 
+    def run_sync_one_word_fromhtml(self, html):
+
+        # Parse world here 
+        error_list = []
+        soup = BeautifulSoup(html)
+        bsu = BS4Util()
+
+        divMain = soup.find("div", "entryWrapper")
+        tag_walter = bsu.find_by_class(divMain, "div", ["entryHead"], False)        # Word alternatives     
+        tag_secs = bsu.find_by_class(divMain, "section", None, False)               # Sections
+
+        wordAlters = divMain.find_all("div", { 'class': [ 'entryHead', 'primary_homograph']})
+        sections = divMain.find("section")
+
+        wordds = {} # Data structure of this word
+        wordds["alternatives"] = []
+        audioURLs = []
+
+        # Audio first
+        tag_Audios = divMain.find_all("audio")
+        for audio01 in tag_Audios:
+            audioURLs.append(audio01['src'])
+        wordds['audio'] = audioURLs
+        wordds['alternatives'] = []
+
+        alternative_struct = []
+        alternative_err = []
+        bWellOrder = True
+        for i in range(len(tag_walter)):
+            if tag_walter[i][0] < 0:
+                bWellOrder = False
+
+        for i in range(len(tag_secs)):
+            if tag_secs[i][0] < 0: 
+                bWellOrder = False
+
+        if bWellOrder:
+            for i in range(len(tag_walter)):
+                alternative_struct.append({
+                    'div_alternative': tag_walter[i][1],
+                    'sections': []
+                })
+
+            for j in range(len(tag_secs)):
+                bFound = True
+                b_BeforeAll = True
+                for i in range(len(tag_walter)):
+                    if tag_secs[j][0] >= tag_walter[i][0]:
+                        b_BeforeAll = False
+                        if i == len(tag_walter)-1:
+                            alternative_struct[i]['sections'].append(tag_secs[j][1])
+                        elif tag_secs[j][0] < tag_walter[i+1][0]:
+                            alternative_struct[i]['sections'].append(tag_secs[j][1])
+
+                if b_BeforeAll:
+                    first_walter = tag_walter[0][0] if len(tag_walter) > 0 else None
+                    alternative_err.append("The section " + str(j) + "th before all Word alternatives; this is invalid or unexpected; its position is " + str(tag_secs[j][0]) + "; The first alternative pos is " + first_walter)
+
+            concat_2ndarray_to_first(error_list, alternative_err)
+    
+            if len(alternative_err) > 0:
+                pass
+            else:
+                for i in range(len(alternative_struct)):
+
+                    parse_alter01 = {}
+
+                    tag_alter01 = alternative_struct[i]['div_alternative']
+                    aHeader = tag_alter01.find("header")
+                    alterName = tag_alter01.find("h2", "hwg")                       # Name of Alternatives 
+                    alterSpelling = tag_alter01.find("span", "phoneticspelling")    # Spelling
+                    alterMp3 = tag_alter01.find("audio")
+
+                    parse_alter01['name'] = alterName.text
+                    parse_alter01['spelling'] = alterSpelling.text
+                    parse_alter01['audio_url'] = alterMp3['src']
+                    parse_alter01['header'] = aHeader.text if aHeader else ""
+                    parse_alter01['sections'] = []
+
+                    for j in range(len(alternative_struct[i]['sections'])):
+                        tag_section01 = alternative_struct[i]['sections'][j]
+                        err, section_dat = self.__parse_section(tag_section01)
+                        concat_2ndarray_to_first(list_error, err['error_list'])
+
+                        if (len(err) > 0):
+                            parse_alter01['sections'].append("<<<<<INVALID_PARSE>>>>>")
+                        else:
+                            parse_alter01['sections'].append(section_dat)
+                    
+                    wordds['alternatives'].append(parse_alter01)
+
+        return None
+
     def __parse_section_meaning(self, tagSection):
         """
             (S-Meaning) Với loại section dạng <section class="gramb">; gọi là section-ý nghĩa; cấu trúc như sau
@@ -696,14 +789,13 @@ class LexicoGrabber:
             # 'meaning_iter': []
         }
         
-        spans = tagSection.find_all("span", recursive=False)
         tag_h3 = tagSection.find("h3", recursive=False)
         tag_spans = tag_h3.find_all("span")
 
         for i in range(len(tag_spans)):
-            if arr_contains(tag_spans[i]["class"], "pos"):
+            if "class" in tag_spans[i] and arr_contains(tag_spans[i]["class"], "pos"):
                 word_type = tag_spans[i].text
-            elif arr_contains(tag_spans[i]["class"], "pos-inflections"):
+            elif "class" in tag_spans[i] and arr_contains(tag_spans[i]["class"], "pos-inflections"):
                 word_form = tag_spans[i].text
             else:
                 word_notes.append(tag_spans[i].text)
@@ -712,7 +804,7 @@ class LexicoGrabber:
             ret_err.append("[Section Meaning (section; class=gramb)] could not find word_type.")
 
         if not word_form:
-            word_form = tag_posinflect.text 
+            ret_err.append("[Section Meaning (section; class=gramb)] could not find word_form.")
 
         uls = tagSection.find_all("ul", "semb")
         for i in range(len(uls)):
@@ -720,14 +812,15 @@ class LexicoGrabber:
 
             for j in range(len(lis)):
                 divTrg = lis[j].find("div", "trg", recursive=False)
-                errtrg, trg_data = self.__parse_DivTrg(tagTrg)
+                if divTrg:
+                    errtrg, trg_data = self.__parse_DivTrg(divTrg)
 
-                if len(errtrg['error_list']) == 0:
-                    meanings.append(trg_data)
-                else:
-                    meanings.append("<<<<<<<<<<<INVALID_PARSE>>>>>>>>>>>>")
+                    if len(errtrg['error_list']) == 0:
+                        meanings.append(trg_data)
+                    else:
+                        meanings.append("<<<<<<<<<<<INVALID_PARSE>>>>>>>>>>>>")
 
-                concat_2ndarray_to_first(ret_err, errtrg['error_list'])
+                    concat_2ndarray_to_first(ret_err, errtrg['error_list'])
             
 
         # return {
@@ -760,7 +853,9 @@ class LexicoGrabber:
                                                     <div class=examples>: nội dung examples 
         """
         
+        err_return = []
         etymology_items = [] # Datastructure result
+        etymology_details = []
 
         tag_h3 = tagSection.find_all("h3", recursive=False)
         div_wrappers = tagSection.find_all("div", "senseInnerWrapper", recursive=False)
@@ -820,44 +915,75 @@ class LexicoGrabber:
                     return -1
                 elif item1['real_pos'] > item2['real_pos']:
                     return 1
-                else 
+                else:
                     return 0
 
             uniform_list.sort(key=___compare_fnc)
 
+            # 
             # Enumerating All
+            # Xây dựng cây dựa theo các indent của level 
+            # 
             current_level = 0
+            building_node = None
             for i in range(len(uniform_list)):
-                if uniform_list[i]['level'] == current_level + 1:
+                
+                if uniform_list[i]['level'] == 1:
+                    # New                            
+                    building_node = {
+                        'content': [],
+                        'notes': [],
+                        'meaning_items': []
+                    }
+                    tag_strongs = uniform_list[i]['tag']
+                    for tag_strong01 in tag_strongs:
+                        building_node['content'].append(tag_strong01.text)
+                    
+                    ety01_struct.append(building_node)
+
+                elif uniform_list[i]['level'] == 2:
+                    if not building_node:
+                        # Create an empty node
+                        building_node = {
+                            'content': [],
+                            'notes': [],
+                            'meaning_items': []
+                        }
+
+                    for j in range(len(uniform_list[i]['tag'])):
+                        building_node['notes'].append(uniform_list[i]['tag'][j].text)
+                else: # 3
+                    if not building_node:
+                        # Create an empty node
+                        building_node = {
+                            'content': [],
+                            'notes': [],
+                            'meaning_items': []
+                        }
+                    
+                    uls = uniform_list[i]['tags']
+                    for j in range(len(uls)):
+                        ul = uls[j]
+                        lis = ul.find_all("li", recursive=False)
+
+                        for li01 in lis:
+                            divtrgs = li01.find_all("div", "trg", recursive=False)
+
+                            for divtrg in divtrgs:
+                                err_trg, trgdata = self.__parse_DivTrg(divtrg)
+
+                                if len(err_trg['error_list']) == 0:
+                                    building_note.meaning_items.append(trg_data)
+                                concat_2ndarray_to_first(err_return, err_trg)
+
+            etymology_details.append(building_node)
             # 
             # BUild A Tree Structure from uniform_list
             # 
             # Building Tree By observation: If a note is after Items 
             # 
-            for i in range(len(etyItems)):
 
-                ety_line_struct = {
-                    'content': "",
-                    'notes': [],
-                    'meaining': {}
-                }
-
-                for j in range(len(etyNotes)):
-                    if etyNotes[j][0] > etyItems[i][0]:
-                        if i == len(etyItems)-1: # Last
-                            
-                        else:
-                    
-
-                    
-
-
-                        for k in range(etyMeans):
-                            if etyMeans[k][0] >= 
-
-
-
-        return
+        return [ { 'error_list': err_return }, { 'etymology_items': etymology_items, 'etymology_details': etymology_details } ]
 
     def __parse_section(self, tagSection):
         """
@@ -934,6 +1060,7 @@ class LexicoGrabber:
                     for j in range(len(lis)):
                         oneMeaningCollect = { }
                         oneMeaningCollect["direct_examples"] = []
+                        oneMeaningCollect["more_examples"] = []
 
                         spanIter = lis[j].find("span", "subsenseIteration")
                         spanContent = lis[j].find("span", "ind")
@@ -1051,12 +1178,18 @@ print(len(res_secs))
 
 ttt = divMain.find_all("div", "entryHead", recursive=True)
 print("entryHead=", len(ttt))
+
+
+lg = LexicoGrabber(RunConfiguration())
+lg.run_sync_one_word_fromhtml(html)
+
 #-------------------------------------------------
 #
 # Choose the appropriate parent Alternative for every sections
 # 
 parse_struct = []
 bWellOrder = True
+
 for i in range(len(res_walter)):
     print(res_walter[i][0])
     if res_walter[i][0] is None or res_walter[i][0] < 0:
