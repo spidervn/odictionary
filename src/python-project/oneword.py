@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup
 from pathlib import Path
 import urllib.request
 import glob, os
+import sys
 
 from json import JSONEncoder
 import json
@@ -514,7 +515,7 @@ class BS4Util:
 class RunConfiguration:
     def __init__(self):
         self.BaseOutputFolder = ""
-        self.EachWordAudioFolder = ""
+        self.EachWordAudioFolder = "audio"
         return
 
     def StorePathOfAWord(self, word):
@@ -525,9 +526,12 @@ class RunConfiguration:
         
     def HTMLFile(self,word):
         return self.BaseOutputFolder + "/" + word + "/" + word + ".html"   
+    
+    def HTMLShortFile(self,word):
+        return self.BaseOutputFolder + "/" + word + "/" + word + "_short.html"  
 
     def AudioFolder(self,word):
-        return self.BaseOutputFolder + "/" + word + "/" + self.EachWordAudioFolder + "/"      
+        return self.BaseOutputFolder + "/" + word + "/" + self.EachWordAudioFolder   
 
 class LexicoGrabber:
     def __init__(self, config):
@@ -1150,84 +1154,141 @@ class LexicoGrabber:
             
         return [{ 'error_list': arr_problems }, ret_data]
 
+
+class LexicoGrabberHTML:
+    def __init__(self, theconfig):
+        self.config = theconfig
+        return
+
+    def grab_one_word(self, strword):
+        
+        if self.is_in_local_db(strword):
+            print("Is in DB!")
+            answer = input("The word " + strword + " has already existed in DB. Overwrite (Y)?")
+            if answer == "Y" or answer == "y":
+                pass 
+            else:
+                return
+
+        err_list = []
+        lexico_url = "https://www.lexico.com/definition/" + strword
+
+        fr = urllib.request.urlopen(lexico_url)
+        html = fr.read()
+        fr.close()
+
+        # Save to HTML
+        try:
+            os.mkdir(self.config.StorePathOfAWord(strword))
+        except:
+            print("could not make folder ", self.config.StorePathOfAWord(strword))
+
+        try:
+            os.mkdir(self.config.AudioFolder(strword))
+        except:
+            print("could not make folder ", self.config.AudioFolder(strword))
+
+        # Get Audio
+        soup = BeautifulSoup(html)
+        divMain = soup.find("div", "entryWrapper")
+        tag_Audios = divMain.find_all("audio")
+        for audio01 in tag_Audios:
+            firstpos = audio01['src'].rfind("/")
+            lastpos=len(audio01['src'])
+            audio_file = audio01['src'][firstpos+1:lastpos]
+
+            urllib.request.urlretrieve(audio01['src'], self.config.AudioFolder(strword) + "/" + audio_file)
+
+        fw = open(self.config.HTMLFile(strword), "w", encoding="utf-8")
+        fw.write(divMain.prettify())
+        fw.close()
+        return
+
+    def is_in_local_db(self, word):
+        # filecheck_01 = Path(self.config.JSONFile(word))
+        filecheck_02 = Path(self.config.HTMLFile(word))
+
+        return (filecheck_02.is_file())
+
 # ==================================
-ffhtml = open("do.html", "r", encoding="UTF-8")
-html = ffhtml.read()
-soup = BeautifulSoup(html)
-divMain = soup.find("div", "entryWrapper")
-span = divMain.find("span")
+def test():
+    ffhtml = open("do.html", "r", encoding="UTF-8")
+    html = ffhtml.read()
+    soup = BeautifulSoup(html)
+    divMain = soup.find("div", "entryWrapper")
+    span = divMain.find("span")
 
-# print(divMain.prettify())
-divHtml = divMain.prettify()
-divHtml = divHtml.replace("\r", "")
-divHtml = divHtml.replace("\n", "")
-spanhtml = span.prettify()
-spanhtml = spanhtml.replace("\r", "")
-spanhtml = spanhtml.replace("\n", "")
-pos = divHtml.find(spanhtml)
+    # print(divMain.prettify())
+    divHtml = divMain.prettify()
+    divHtml = divHtml.replace("\r", "")
+    divHtml = divHtml.replace("\n", "")
+    spanhtml = span.prettify()
+    spanhtml = spanhtml.replace("\r", "")
+    spanhtml = spanhtml.replace("\n", "")
+    pos = divHtml.find(spanhtml)
 
-print("BS4Util")
-bsu = BS4Util()
-res = bsu.find_by_class(divMain, "section", ["etymology"], True)
+    print("BS4Util")
+    bsu = BS4Util()
+    res = bsu.find_by_class(divMain, "section", ["etymology"], True)
 
-res_walter = bsu.find_by_class(divMain, "div", ["entryHead"], True)
-res_secs = bsu.find_by_class(divMain, "section", None, False) # Find first class
-print(len(res))
-print(len(res_walter))
-print(len(res_secs))
+    res_walter = bsu.find_by_class(divMain, "div", ["entryHead"], True)
+    res_secs = bsu.find_by_class(divMain, "section", None, False) # Find first class
+    print(len(res))
+    print(len(res_walter))
+    print(len(res_secs))
 
-ttt = divMain.find_all("div", "entryHead", recursive=True)
-print("entryHead=", len(ttt))
+    ttt = divMain.find_all("div", "entryHead", recursive=True)
+    print("entryHead=", len(ttt))
 
 
-lg = LexicoGrabber(RunConfiguration())
-lg.run_sync_one_word_fromhtml(html)
+    # lg = LexicoGrabber(RunConfiguration())
+    # lg.run_sync_one_word_fromhtml(html)
 
-#-------------------------------------------------
-#
-# Choose the appropriate parent Alternative for every sections
-# 
-parse_struct = []
-bWellOrder = True
+    #-------------------------------------------------
+    #
+    # Choose the appropriate parent Alternative for every sections
+    # 
+    parse_struct = []
+    bWellOrder = True
 
-for i in range(len(res_walter)):
-    print(res_walter[i][0])
-    if res_walter[i][0] is None or res_walter[i][0] < 0:
-        bWellOrder = False
-
-for i in range(len(res_secs)):
-    print(res_secs[i][0])
-    if res_secs[i][0] is None or res_secs[i][0] < 0: 
-        bWellOrder = False
-
-if bWellOrder:
     for i in range(len(res_walter)):
-        parse_struct.append({
-            'div_alternative': res_walter[i],
-            'sections': []
-        })
+        print(res_walter[i][0])
+        if res_walter[i][0] is None or res_walter[i][0] < 0:
+            bWellOrder = False
 
-    arrError = []
-    for j in range(len(res_secs)):
-        bFound = True
-        b_BeforeAll = True
+    for i in range(len(res_secs)):
+        print(res_secs[i][0])
+        if res_secs[i][0] is None or res_secs[i][0] < 0: 
+            bWellOrder = False
+
+    if bWellOrder:
         for i in range(len(res_walter)):
-            if res_secs[j][0] >= res_walter[i][0]:
-                b_BeforeAll = False
-                if i == len(res_walter)-1:
-                    parse_struct[i]['sections'].append(res_secs[j])
-                elif res_secs[j][0] < res_walter[i+1][0]:
-                    parse_struct[i]['sections'].append(res_secs[j])
+            parse_struct.append({
+                'div_alternative': res_walter[i],
+                'sections': []
+            })
 
-        if b_BeforeAll:
-            first_walter = res_walter[0][0] if len(res_walter) > 0 else None
-            arrError.append("The section " + str(j) + "th before all Word alternatives; this is invalid or unexpected; its position is " + str(res_secs[j][0]) + "; The first alternative pos is " + first_walter)
+        arrError = []
+        for j in range(len(res_secs)):
+            bFound = True
+            b_BeforeAll = True
+            for i in range(len(res_walter)):
+                if res_secs[j][0] >= res_walter[i][0]:
+                    b_BeforeAll = False
+                    if i == len(res_walter)-1:
+                        parse_struct[i]['sections'].append(res_secs[j])
+                    elif res_secs[j][0] < res_walter[i+1][0]:
+                        parse_struct[i]['sections'].append(res_secs[j])
 
-    print("Final result=", arrError)
-    
-else:
-    # Invalid Here 
-    print("Invalid Order")
+            if b_BeforeAll:
+                first_walter = res_walter[0][0] if len(res_walter) > 0 else None
+                arrError.append("The section " + str(j) + "th before all Word alternatives; this is invalid or unexpected; its position is " + str(res_secs[j][0]) + "; The first alternative pos is " + first_walter)
+
+        print("Final result=", arrError)
+        
+    else:
+        # Invalid Here 
+        print("Invalid Order")
 
 #
 # print(res)
@@ -1280,3 +1341,14 @@ else:
     Tag có vùng sâu nhất là những tag không bị trùng lặp. 
 
 """
+
+
+
+
+if len(sys.argv) >= 2:
+    cfg = RunConfiguration()
+    cfg.BaseOutputFolder = "C:/BIN/data_dict"
+    cfg.EachWordAudioFolder = "audio"
+    lgh = LexicoGrabberHTML(cfg)
+
+    lgh.grab_one_word(sys.argv[1])
