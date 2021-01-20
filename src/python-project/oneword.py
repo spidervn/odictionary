@@ -1172,10 +1172,20 @@ class LexicoGrabberHTML:
 
         err_list = []
         lexico_url = "https://www.lexico.com/definition/" + strword
+        html = None
 
-        fr = urllib.request.urlopen(lexico_url)
-        html = fr.read()
-        fr.close()
+        try:
+            fr = urllib.request.urlopen(lexico_url)
+            html = fr.read()
+            fr.close()
+        except:
+            print("There is a problem to open this word URL. This word may not exist.")
+            return
+
+
+        # Check search result
+        soup = BeautifulSoup(html)
+        divMain = soup.find("div", "entryWrapper")
 
         # Save to HTML
         try:
@@ -1189,8 +1199,6 @@ class LexicoGrabberHTML:
             print("could not make folder ", self.config.AudioFolder(strword))
 
         # Get Audio
-        soup = BeautifulSoup(html)
-        divMain = soup.find("div", "entryWrapper")
         tag_Audios = divMain.find_all("audio")
         for audio01 in tag_Audios:
             firstpos = audio01['src'].rfind("/")
